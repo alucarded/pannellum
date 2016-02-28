@@ -41,6 +41,7 @@ var config,
     preview,
     isUserInteracting = false,
     latestInteraction = Date.now(),
+    mouseMoved = false,
     onPointerDownPointerX = 0,
     onPointerDownPointerY = 0,
     onPointerDownPointerDist = -1,
@@ -531,6 +532,27 @@ function mousePosition(event) {
     return pos;
 }
 
+// coord[0] - pitch, coord[1] - yaw
+function findNearestHotSpot(coord) {
+    if (config.hotSpots.length == 0) {
+        return null;
+    }
+    var nearestHs = config.hotSpots[0];
+    config.hotSpots.forEach(function(hs) {
+        var nPitchDelta = nearestHs.pitch - coord[0],
+            pitchDelta  = hs.pitch - coord[0];
+        var nYawDelta = nearestHs.yaw - coord[1],
+            yawDelta = hs.yaw - coord[1];
+        var ndist = nPitchDelta*nPitchDelta
+                  + nYawDelta*nYawDelta,
+            dist  = pitchDelta*pitchDelta + yawDelta*yawDelta;
+        if (dist < ndist) {
+            nearestHs = hs;
+        }
+    });
+    return nearestHs;
+}
+
 /**
  * Event handler for mouse clicks. Initializes panning. Prints center and click
  * location coordinates when hot spot debugging is enabled.
@@ -563,7 +585,8 @@ function onDocumentMouseDown(event) {
     
     isUserInteracting = true;
     latestInteraction = Date.now();
-    
+    mouseMoved = false;
+
     onPointerDownPointerX = pos.x;
     onPointerDownPointerY = pos.y;
     
@@ -576,14 +599,7 @@ function onDocumentMouseDown(event) {
     animateInit();
 }
 
-/**
- * Calculate panorama pitch and yaw from location of mouse event.
- * @private
- * @param {MouseEvent} event - Document mouse down event.
- * @returns {number[]} [pitch, yaw]
- */
-function mouseEventToCoords(event) {
-    var pos = mousePosition(event);
+function mousePositionToCoords(pos) {
     var canvas = renderer.getCanvas();
     var x = pos.x / canvas.width * 2 - 1;
     var y = (1 - pos.y / canvas.height * 2) * canvas.height / canvas.width;
@@ -598,12 +614,24 @@ function mouseEventToCoords(event) {
 }
 
 /**
+ * Calculate panorama pitch and yaw from location of mouse event.
+ * @private
+ * @param {MouseEvent} event - Document mouse down event.
+ * @returns {number[]} [pitch, yaw]
+ */
+function mouseEventToCoords(event) {
+    var pos = mousePosition(event);
+    return mousePositionToCoords(pos);
+}
+
+/**
  * Event handler for mouse moves. Pans center of view.
  * @private
  * @param {MouseEvent} event - Document mouse move event.
  */
 function onDocumentMouseMove(event) {
     if (isUserInteracting && loaded) {
+        mouseMoved = true;
         latestInteraction = Date.now();
         var canvas = renderer.getCanvas();
         var pos = mousePosition(event);
@@ -636,6 +664,15 @@ function onDocumentMouseUp() {
     }
     container.classList.add('pnlm-grab');
     container.classList.remove('pnlm-grabbing');
+    if (!mouseMoved) {
+        var pos = {
+            x : onPointerDownPointerX,
+            y : onPointerDownPointerY
+        };
+        var coord = mousePositionToCoords(pos);
+        var nhs = findNearestHotSpot(coord);
+        loadScene(nhs.sceneId, nhs.targetPitch, nhs.targetYaw);
+    }
 }
 
 /**
